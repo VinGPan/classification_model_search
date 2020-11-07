@@ -15,12 +15,12 @@ def run_experiment(commnad, yml_name):
     elif commnad == 'split':
         split(configs)
     elif commnad == 'model':
-        build_models(configs)
+        return build_models(configs)
     elif commnad == 'all':
         cleanup(configs)
         compute_features(configs)
         split(configs)
-        build_models(configs)
+        return build_models(configs)
 
 
 if __name__ == '__main__':
