@@ -1,0 +1,55 @@
+experiment_name: 'exp1'
+data_path: 'data\winequality_red.csv'
+cleanup: 'none'
+features: 'none'
+split: 'random'
+target: 'quality'
+models:
+    preprocs: ['none', 'min_max', 'standard_scalar']
+    transforms:
+        - name: 'none'
+        - name: 'pca'
+          params:
+            - name: 'n_components'
+              vals: [3, 5, 10]
+        - name: 'kpca'
+          params:
+            - name: 'n_components'
+              vals: [3, 4, 5]
+        - name: 'lle'
+          params:
+            - name: 'n_components'
+              vals: [3, 4, 5]
+            - name: 'n_neighbors'
+              vals: [3, 5, 7]
+    classifiers:
+        - name: 'logistic'
+          params:
+            - name: 'penalty'
+              vals: ['l1', 'l2']
+            - name: 'C'
+              vals: [0.01, 0.1, 1, 10]
+            - name: 'class_weight'
+              vals: ['None', 'balanced']
+        - name: 'random_forest'
+          params:
+            - name: 'max_depth'
+              vals: [3, 7, 10, 20]
+            - name: 'min_samples_split'
+              vals: [10, 15, 30]
+            - name: 'n_estimators'
+              vals: [50, 100, 150, 200]
+        - name: 'svc'
+          params:
+            - name: 'kernel'
+              vals: ['linear', 'rbf']
+            - name: 'C'
+              vals: [0.01, 0.1, 1]
+            - name: 'gamma'
+              vals: [0.01, 0.1, 1]
+        - name: 'xgboost'
+          params:
+            - name: 'learning_rate'
+              vals: [0.001, 0.01, 0.1]
+            - name: 'n_estimators'
+              vals: [50, 100, 150, 200]

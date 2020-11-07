@@ -1,0 +1,29 @@
+import argparse
+import yaml
+import os
+
+
+def read_yml(yml_name):
+    with open(yml_name, 'r') as ymlfile:
+        configs = yaml.load(ymlfile, Loader=yaml.CLoader)
+    return configs
+
+
+def read_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "command", metavar="<command>"
+    )
+    parser.add_argument(
+        "--yml_path",
+        required=True
+    )
+    args = parser.parse_args()
+    return args.command, args.yml_path
+
+
+def makedir(path):
+    try:
+        os.mkdir(path)
+    except:
+        pass
