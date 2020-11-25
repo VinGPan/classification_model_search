@@ -5,7 +5,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-
+# https://www.oreilly.com/library/view/python-data-science/9781491912126/ch04.html
 def single_column_discrete(X, config):
     mu = np.mean(X)
     st = np.std(X)
