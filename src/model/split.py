@@ -1,5 +1,7 @@
-import pandas as pd
 import random
+
+import pandas as pd
+
 from src.utils.logging import logger
 
 

@@ -1,5 +1,5 @@
-import pandas as pd
 import shutil
+
 from src.utils.logging import logger
 
 
@@ -13,4 +13,3 @@ def cleanse(configs):
     else:
         logger.error("Data Cleansing option " + configs['cleanse'] + " not supported")
         raise Exception("Data Cleansing option " + configs['cleanse'] + " not supported")
-

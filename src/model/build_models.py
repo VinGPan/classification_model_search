@@ -1,47 +1,38 @@
 import os
 import os.path
 import pickle
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+import xgboost as xgb
+from sklearn.decomposition import KernelPCA
+from sklearn.decomposition import PCA
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.externals import joblib
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.manifold import Isomap
+from sklearn.manifold import LocallyLinearEmbedding
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import PredefinedSplit
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.svm import SVC
+from sklearn.utils.testing import ignore_warnings
+
+from src.utils.logging import logger
+
 
 #####################################################################
 # HERE IS LIST OF VARIES LIBRARIES WE STUDIED DURING SCS_3253_024 Machine Learning COURSE  that are
 # relevant to classification problem. We will tray use as many ideas as possible for this project.
-
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-
-from sklearn.decomposition import PCA
-from sklearn.decomposition import KernelPCA
-from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.manifold import MDS
-from sklearn.manifold import Isomap
-from sklearn.manifold import TSNE
-
-from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-import xgboost as xgb
-
-from sklearn.ensemble import BaggingClassifier
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.ensemble import GradientBoostingClassifier
-
-from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from sklearn.model_selection import PredefinedSplit
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, confusion_matrix
-from scipy.stats import reciprocal, uniform
-from scipy.stats import geom, expon
-
-from sklearn.externals import joblib
 #####################################################################
-
-from sklearn.utils.testing import ignore_warnings
-from sklearn.exceptions import ConvergenceWarning
-from src.utils.logging import logger
 
 
 def add_preproc_step(preproc_str, steps):
@@ -122,9 +113,6 @@ def build_models(configs):
 
     logger.info('Building Models for ' + str(train_path))
 
-    # test_path = train_path.replace("train.csv", "test.csv")
-    # features_path = "output/" + configs['experiment_name'] + "/features.csv"
-
     X = pd.read_csv(data_path)
     y = X[configs['target']].values
     X = X.drop([configs['target']], axis=1)
@@ -134,7 +122,7 @@ def build_models(configs):
     ids = list((pd.read_csv(train_path, header=None).values)[:, 0])
     train_end = len(ids)
     ids.extend(list((pd.read_csv(val_path, header=None).values)[:, 0]))
-    X = X[ids,:]
+    X = X[ids, :]
     y = y[ids]
 
     train_proportion = 0.9

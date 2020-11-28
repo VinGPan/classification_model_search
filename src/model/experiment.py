@@ -1,8 +1,8 @@
-from src.model.utils import read_args, read_yml, makedir
-from src.model.data_cleansing import cleanse
-from src.model.compute_features import compute_features
-from src.model.split import split
 from src.model.build_models import build_models
+from src.model.compute_features import compute_features
+from src.model.data_cleansing import cleanse
+from src.model.split import split
+from src.model.utils import read_args, read_yml, makedir
 from src.utils.logging import logger
 
 

@@ -1,6 +1,7 @@
 import argparse
-import yaml
 import os
+
+import yaml
 
 
 def read_yml(yml_name):

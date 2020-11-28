@@ -1,5 +1,6 @@
-from src.model.utils import read_yml
 import pandas as pd
+
+from src.model.utils import read_yml
 
 
 def prepare_test_data(yml_name):

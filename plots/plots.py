@@ -2,8 +2,9 @@
 # hist + box plots + bin-wise
 # image plots , text, circle, bounding box etc, random colors
 # scatter with different classes with different color, different radius
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 # https://www.oreilly.com/library/view/python-data-science/9781491912126/ch04.html
 def single_column_discrete(X, config):
@@ -66,8 +67,8 @@ def single_column_continuous(X, config):
     hist, edges = np.histogram(X, bins=config['bins'])
     mids = []
     for i, v in enumerate(edges[0:-1]):
-        v2 = edges[i+1]
-        mids.append((v + v2)/2)
+        v2 = edges[i + 1]
+        mids.append((v + v2) / 2)
     axs[1].bar(mids, hist)
 
     qs = np.quantile(X, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
@@ -164,7 +165,7 @@ if __name__ == '__main__':
     config = {'title': 'Title',
               'ylabel': 'ylabel',
               'bins': 10,
-             }
+              }
 
     random.seed(42)
     mn = random.randint(0, 250)
