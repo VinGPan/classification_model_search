@@ -1,5 +1,6 @@
 import pandas as pd
 import random
+from src.utils.logging import logger
 
 
 def write_ids(ids, file_name):
@@ -10,12 +11,14 @@ def write_ids(ids, file_name):
 
 
 def split(configs):
-    random.seed(42)
-    data_path = "output/" + configs['experiment_name'] + "/data.csv"
+    data_path = "output/" + configs['experiment_name'] + "/features.csv"
+    logger.info('Running Data Split "' + str(configs['split'])
+                + '" for ' + str(data_path))
     train_path = "output/" + configs['experiment_name'] + "/train.csv"
     val_path = train_path.replace("train.csv", "val.csv")
     test_path = train_path.replace("train.csv", "test.csv")
     data = pd.read_csv(data_path)
+    random.seed(42)
     if configs['split'] == 'random':
         ids = [i for i in range(data.shape[0])]
         random.shuffle(ids)
@@ -25,4 +28,5 @@ def split(configs):
         write_ids(ids[train_end:val_end], val_path)
         write_ids(ids[val_end:], test_path)
     else:
-        assert False, "cleanup option " + configs['cleanup'] + " not supported"
+        logger.error("Data Split option " + configs['split'] + " not supported")
+        raise Exception("Data Split option " + configs['split'] + " not supported")

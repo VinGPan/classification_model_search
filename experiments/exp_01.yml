@@ -1,6 +1,6 @@
 experiment_name: 'exp1'
-data_path: 'data\winequality_red.csv'
-cleanup: 'none'
+data_path: 'data/winequality_red.csv'
+cleanse: 'none'
 features: 'none'
 split: 'random'
 target: 'quality'

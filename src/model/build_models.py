@@ -41,6 +41,77 @@ from sklearn.externals import joblib
 
 from sklearn.utils.testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
+from src.utils.logging import logger
+
+
+def add_preproc_step(preproc_str, steps):
+    if preproc_str == 'min_max':
+        steps.append(('preprocs', MinMaxScaler()))
+    elif preproc_str == 'standard_scalar':
+        steps.append(('preprocs', StandardScaler()))
+    elif preproc_str == 'none':
+        pass
+    else:
+        logger.error("unsupported preprocs option " + preproc_str)
+        raise Exception("unsupported preprocs option " + preproc_str)
+
+
+def add_transform_step(transforms_str, steps, transforms_info, param_grid):
+    if transforms_str == 'pca':
+        steps.append(('transforms', PCA()))
+    elif transforms_str == 'kpca':
+        steps.append(('transforms', KernelPCA(kernel='rbf')))
+    elif transforms_str == 'lle':
+        steps.append(('transforms', LocallyLinearEmbedding()))
+    # elif transforms_str == 'mds':
+    #     steps.append(('transforms', MDS())) # DOES NOT HAVE transform() function
+    #     param_grid[0]["transforms__n_components"] = [3, 4, 5]
+    elif transforms_str == 'isomap':
+        steps.append(('transforms', Isomap()))
+    # elif transforms_str == 'tsne':  # DOES NOT HAVE transform() function
+    #     steps.append(('transforms', TSNE()))
+    #     param_grid[0]["transforms__n_components"] = [3, 4, 5]
+    elif transforms_str == 'none':
+        pass
+    else:
+        logger.error("unsupported transforms option " + transforms_str)
+        raise Exception("unsupported transforms option " + transforms_str)
+
+    if 'params' in transforms_info:
+        for trans_param in transforms_info['params']:
+            vals = trans_param['vals']
+            name = trans_param['name']
+            for vidx in range(len(vals)):
+                if vals[vidx] == 'None':
+                    vals[vidx] = None
+            param_grid[0]["transforms__" + name] = vals
+
+
+def add_classifier_step(clf_str, steps, clf_info, param_grid, tot_classes):
+    if clf_str == 'logistic':
+        steps.append(('clf', LogisticRegression(multi_class='auto', random_state=0, solver='liblinear')))
+    elif clf_str == 'naive_bayes':
+        steps.append(('clf', GaussianNB()))
+    elif clf_str == 'knn':
+        steps.append(('clf', KNeighborsClassifier()))
+    elif clf_str == 'random_forest':
+        steps.append(('clf', RandomForestClassifier()))
+    elif clf_str == 'svc':
+        steps.append(('clf', SVC(class_weight='balanced', random_state=42)))
+    elif clf_str == 'xgboost':
+        steps.append(('clf', xgb.XGBClassifier(random_state=42, objective="multi:softmax", num_class=tot_classes)))
+    elif clf_str == 'adaboost':
+        steps.append(('clf', AdaBoostClassifier(random_state=42)))
+    elif clf_str == 'gradboost':
+        steps.append(('clf', GradientBoostingClassifier(random_state=42)))
+    if 'params' in clf_info:
+        for clf_param in clf_info['params']:
+            vals = clf_param['vals']
+            name = clf_param['name']
+            for vidx in range(len(vals)):
+                if vals[vidx] == 'None':
+                    vals[vidx] = None
+            param_grid[0]["clf__" + name] = vals
 
 
 @ignore_warnings(category=ConvergenceWarning)
@@ -48,8 +119,11 @@ def build_models(configs):
     data_path = "output/" + configs['experiment_name'] + "/data.csv"
     train_path = "output/" + configs['experiment_name'] + "/train.csv"
     val_path = train_path.replace("train.csv", "val.csv")
-    test_path = train_path.replace("train.csv", "test.csv")
-    features_path = "output/" + configs['experiment_name'] + "/features.csv"
+
+    logger.info('Building Models for ' + str(train_path))
+
+    # test_path = train_path.replace("train.csv", "test.csv")
+    # features_path = "output/" + configs['experiment_name'] + "/features.csv"
 
     X = pd.read_csv(data_path)
     y = X[configs['target']].values
@@ -75,128 +149,88 @@ def build_models(configs):
     # PredefinedSplit Helps in running GridSearch with single predefined split.
     pds = PredefinedSplit(test_fold=split_index)
 
-    if os.path.exists("output/" + configs["experiment_name"] + "/all_scores.pkl"):
+    all_scores_path = "output/" + configs["experiment_name"] + "/all_scores.pkl"
+    all_scores_done_flg = "output/" + configs["experiment_name"] + "/all_scores_flg"
+    if os.path.exists(all_scores_path) and os.path.exists(all_scores_done_flg):
         # If allready model building is done just return the results.
         # This is heplful to display result in a jupyter notebook.
-        all_scores = pickle.load(open("output/" + configs["experiment_name"] + "/all_scores.pkl", "rb"))
+        logger.info('All the models have been built already. Loading results from ' + str(all_scores_path))
+        all_scores = pickle.load(open(all_scores_path, "rb"))
     else:
         model_scores = {}
         all_scores = []
         tot_classes = np.unique(y).shape[0]
 
+        # For Each classifier - For Each Data transform - For each Dimensionality reduction BUILD THE MODEL!
+
         for clf_info in configs["models"]["classifiers"]:
             for preproc_str in configs["models"]["preprocs"]:
                 for transforms_info in configs["models"]["transforms"]:
+                    transforms_str = transforms_info['name']
+                    clf_str = clf_info['name']
+                    res_path = "output/" + configs["experiment_name"] + "/" + clf_str + "_" + preproc_str + "_" + \
+                               transforms_str + ".pkl"
+                    model_str = 'classifier "' + clf_str + '" with preprocessing "' + preproc_str + \
+                                '" and with transform "' + transforms_str + '"'
+                    logger.info('Building ' + model_str)
 
-                    # For Each classifier - For Each Datatransform - For each Dimensionality reduction BUILD THE MODEL!
-
+                    ################# ADD IMPUTERS #################################
                     steps = [('imputer', SimpleImputer(strategy='mean'))]
                     param_grid = [{}]
+                    ###################################################################
 
                     ################# PICK A DATA TRANSFORM ###########################
-                    if preproc_str == 'min_max':
-                        steps.append(('preprocs', MinMaxScaler()))
-                    elif preproc_str == 'standard_scalar':
-                        steps.append(('preprocs', StandardScaler()))
-                    elif preproc_str == 'none':
-                        pass
-                    else:
-                        assert False, "unsupported preprocs option " + preproc_str
-                    ############################################
+                    add_preproc_step(preproc_str, steps)
+                    ###################################################################
 
-                    ################### PICK A Dimensionality reduction method #########################
-                    transforms_str = transforms_info['name']
-
-                    if transforms_str == 'pca':
-                        steps.append(('transforms', PCA()))
-                    elif transforms_str == 'kpca':
-                        steps.append(('transforms', KernelPCA(kernel='rbf')))
-                    elif transforms_str == 'lle':
-                        steps.append(('transforms', LocallyLinearEmbedding()))
-                    # elif transforms_str == 'mds':
-                    #     steps.append(('transforms', MDS())) # DOES NOT HAVE transform() function
-                    #     param_grid[0]["transforms__n_components"] = [3, 4, 5]
-                    elif transforms_str == 'isomap':
-                        steps.append(('transforms', Isomap()))
-                    # elif transforms_str == 'tsne':  # DOES NOT HAVE transform() function
-                    #     steps.append(('transforms', TSNE()))
-                    #     param_grid[0]["transforms__n_components"] = [3, 4, 5]
-                    elif transforms_str == 'none':
-                        pass
-                    else:
-                        assert False, "unsupported transforms option " + transforms_str
-                    if 'params' in transforms_info:
-                        for trans_param in transforms_info['params']:
-                            vals = trans_param['vals']
-                            name = trans_param['name']
-                            for vidx in range(len(vals)):
-                                if vals[vidx] == 'None':
-                                    vals[vidx] = None
-                            param_grid[0]["transforms__" + name] = vals
-                    ############################################
+                    ################### PICK A Dimensionality reduction method ################
+                    add_transform_step(transforms_str, steps, transforms_info, param_grid)
+                    ###################################################################
 
                     ##################### PICK A classifier #######################
-                    clf_str = clf_info['name']
-                    if clf_str == 'logistic':
-                        steps.append(('clf', LogisticRegression(multi_class='auto', random_state=0, solver='liblinear')))
-                    elif clf_str == 'naive_bayes':
-                        steps.append(('clf', GaussianNB()))
-                    elif clf_str == 'knn':
-                        steps.append(('clf', KNeighborsClassifier()))
-                    elif clf_str == 'random_forest':
-                        steps.append(('clf', RandomForestClassifier()))
-                    elif clf_str == 'svc':
-                        steps.append(('clf', SVC(class_weight='balanced', random_state=42)))
-                    elif clf_str == 'xgboost':
-                        steps.append(('clf', xgb.XGBClassifier(random_state=42, objective="multi:softmax", num_class=tot_classes)))
-                    elif clf_str == 'adaboost':
-                        steps.append(('clf', AdaBoostClassifier(random_state=42)))
-                    elif clf_str == 'gradboost':
-                        steps.append(('clf', GradientBoostingClassifier(random_state=42)))
+                    add_classifier_step(clf_str, steps, clf_info, param_grid, tot_classes)
+                    ###################################################################
 
-                    if 'params' in clf_info:
-                        for clf_param in clf_info['params']:
-                            vals = clf_param['vals']
-                            name = clf_param['name']
-                            for vidx in range(len(vals)):
-                                if vals[vidx] == 'None':
-                                    vals[vidx] = None
-                            param_grid[0]["clf__" + name] = vals
-                    ############################################
-
-                    # Perform grid search
+                    ##################### Perform grid search #####################
                     pipeline = Pipeline(steps=steps)
-                    clf = GridSearchCV(estimator=pipeline, cv=pds, param_grid=param_grid, verbose=1, scoring='balanced_accuracy')
-                    res_path = "output/" + configs["experiment_name"] + "/" + clf_str + "_" + preproc_str + "_" + transforms_str + ".pkl"
+                    clf = GridSearchCV(estimator=pipeline, cv=pds, param_grid=param_grid,
+                                       verbose=1, scoring='balanced_accuracy')
                     if os.path.exists(res_path):
+                        logger.info('Model has been built already. Loading the model ' + str(res_path))
                         clf = joblib.load(res_path)
                     else:
                         try:
                             clf.fit(X_train, y_train)
-                        except:
-                            print("Crash For " + res_path)
+                        except Exception as e:
+                            logger.info("Model building crashed for " + model_str)
+                            logger.error(e, exc_info=True)
                             continue
-                        # Store the model
                         joblib.dump(clf, res_path)
-                        # continue
+                    ###################################################################
+
+                    ################### Perform Validation ################
+                    logger.info("Validating the model " + model_str)
                     if clf_str not in model_scores:
                         model_scores[clf_str] = []
                     val_preds = clf.predict(X_val)
-
-                    # Compute accuracy scores
-                    accuracy = accuracy_score(y_val, val_preds) * 100
-                    bal_accuracy = balanced_accuracy_score(y_val, val_preds) * 100
-                    f1 = f1_score(y_val, val_preds, average='weighted', labels=np.unique(val_preds))
+                    accuracy = np.round(accuracy_score(y_val, val_preds) * 100, 1)
+                    bal_accuracy = np.round(balanced_accuracy_score(y_val, val_preds) * 100, 1)
+                    f1 = np.round(f1_score(y_val, val_preds, average='weighted', labels=np.unique(val_preds)), 2)
                     model_scores[clf_str].append([res_path, accuracy, bal_accuracy, f1, clf.best_params_])
-                    res_str = 'classifier = ' + clf_str + ", preproc = " + preproc_str + ", transform = " + transforms_str
-                    res_str += (' => accuracy = ' + str(accuracy) + '%, F1 = ' + str(f1))
-                    # print(res_str)
+                    res_str = ' => accuracy = ' + str(accuracy) + '%, F1 = ' + str(f1)
+                    logger.info(model_str + res_str)
                     all_scores.append([clf_str, preproc_str, transforms_str, accuracy, bal_accuracy, f1])
-
-        pickle.dump(all_scores, open("output/" + configs["experiment_name"] + "/all_scores.pkl", "wb"))
+                    pickle.dump(all_scores, open(all_scores_path, "wb"))
+                    ###################################################################
+                # end each transforms
+            # end each preprocs
+        # end each classifiers
+        fid = open(all_scores_done_flg, "wb")
+        fid.close()
+        logger.info("All the models are built.")
 
     # Find top three models
-    # print("Top 3 classifiers")
+    logger.info("Top 3 classifiers:")
     all_scores = sorted(all_scores, key=lambda x: x[4], reverse=True)
     prev_cls = None
     cls_count = 0
@@ -206,14 +240,13 @@ def build_models(configs):
             continue
         res_str = 'classifier = ' + score[0] + ", preproc = " + score[1] + ", transform = " + score[2]
         res_str += (' => accuracy = ' + str(score[3]) + '%, F1 = ' + str(score[4]))
-        # print(res_str)
+        logger.info(res_str)
         prev_cls = score[0]
         cls_count += 1
         top_scores.append(score)
         if cls_count == 3:
             break
-    df = pd.DataFrame(np.array(top_scores), columns=['classifier', 'preprocess', 'transform', 'accuracy', 'balanced_accuracy',
-                                                'f1_score'])
-    all_scores = pd.DataFrame(np.array(all_scores), columns=['classifier', 'preprocess', 'transform', 'accuracy', 'balanced_accuracy',
-                                                'f1_score'])
+    col_names = ['classifier', 'preprocess', 'transform', 'accuracy', 'balanced_accuracy', 'f1_score']
+    df = pd.DataFrame(np.array(top_scores), columns=col_names)
+    all_scores = pd.DataFrame(np.array(all_scores), columns=col_names)
     return all_scores, df
