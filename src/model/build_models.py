@@ -107,7 +107,7 @@ def add_classifier_step(clf_str, steps, clf_info, param_grid, tot_classes):
 
 @ignore_warnings(category=ConvergenceWarning)
 def build_models(configs):
-    data_path = "output/" + configs['experiment_name'] + "/data.csv"
+    data_path = "output/" + configs['experiment_name'] + "/features.csv"
     train_path = "output/" + configs['experiment_name'] + "/train.csv"
     val_path = train_path.replace("train.csv", "val.csv")
 
