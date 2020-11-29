@@ -1,5 +1,6 @@
-from src.utils.logging import logger
 import pandas as pd
+
+from src.utils.logging import logger
 
 
 def cleanse(configs):
