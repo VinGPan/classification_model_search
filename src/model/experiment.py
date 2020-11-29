@@ -14,7 +14,7 @@ def run_experiment(yml_name):
     compute_features(configs)
     split(configs)
     build_models(configs)
-    return report(configs)
+    report(configs)
 
 
 if __name__ == '__main__':
