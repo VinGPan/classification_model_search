@@ -17,8 +17,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import Isomap
 from sklearn.manifold import LocallyLinearEmbedding
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import PredefinedSplit
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
@@ -113,29 +113,16 @@ def build_models(configs):
 
     logger.info('Building Models for ' + str(train_path))
 
+    # Read train and val sets
     X = pd.read_csv(data_path)
     y = X[configs['target']].values
     X = X.drop([configs['target']], axis=1)
     X = X.values
 
-    # Make Train - Val split.
     ids = list((pd.read_csv(train_path, header=None).values)[:, 0])
-    train_end = len(ids)
     ids.extend(list((pd.read_csv(val_path, header=None).values)[:, 0]))
     X = X[ids, :]
     y = y[ids]
-
-    train_proportion = 0.9
-    X_train = X[0:train_end, :]
-    y_train = y[0:train_end]
-    cv_end = int(X_train.shape[0] * train_proportion)
-    X_val = X[train_end:, :]
-    y_val = y[train_end:]
-
-    split_index = [-1 if i < cv_end else 0 for i in range(X_train.shape[0])]
-
-    # PredefinedSplit Helps in running GridSearch with single predefined split.
-    pds = PredefinedSplit(test_fold=split_index)
 
     all_scores_path = "output/" + configs["experiment_name"] + "/all_scores.pkl"
     all_scores_done_flg = "output/" + configs["experiment_name"] + "/all_scores_flg"
@@ -181,14 +168,18 @@ def build_models(configs):
 
                     ##################### Perform grid search #####################
                     pipeline = Pipeline(steps=steps)
-                    clf = GridSearchCV(estimator=pipeline, cv=pds, param_grid=param_grid,
-                                       verbose=1, scoring='balanced_accuracy')
+                    scoring = {'balanced_accuracy': make_scorer(balanced_accuracy_score),
+                               'accuracy': make_scorer(accuracy_score),
+                               'f1': 'f1_micro'}
+
+                    clf = GridSearchCV(estimator=pipeline, cv=5, param_grid=param_grid,
+                                       verbose=1, scoring=scoring, refit='balanced_accuracy')
                     if os.path.exists(res_path):
                         logger.info('Model has been built already. Loading the model ' + str(res_path))
                         clf = joblib.load(res_path)
                     else:
                         try:
-                            clf.fit(X_train, y_train)
+                            clf.fit(X, y)
                         except Exception as e:
                             logger.info("Model building crashed for " + model_str)
                             logger.error(e, exc_info=True)
@@ -196,14 +187,19 @@ def build_models(configs):
                         joblib.dump(clf, res_path)
                     ###################################################################
 
-                    ################### Perform Validation ################
-                    logger.info("Validating the model " + model_str)
+                    ################### Record scores ################
                     if clf_str not in model_scores:
                         model_scores[clf_str] = []
-                    val_preds = clf.predict(X_val)
-                    accuracy = np.round(accuracy_score(y_val, val_preds) * 100, 1)
-                    bal_accuracy = np.round(balanced_accuracy_score(y_val, val_preds) * 100, 1)
-                    f1 = np.round(f1_score(y_val, val_preds, average='weighted', labels=np.unique(val_preds)), 2)
+                    cv_results = clf.cv_results_
+                    for scorer in scoring:
+                        best_index = np.nonzero(cv_results['rank_test_%s' % scorer] == 1)[0][0]
+                        best_score = cv_results['mean_test_%s' % scorer][best_index]
+                        if scorer == 'balanced_accuracy':
+                            bal_accuracy = np.round(best_score * 100, 1)
+                        elif scorer == 'accuracy':
+                            accuracy = np.round(best_score * 100, 1)
+                        else:
+                            f1 = np.round(best_score, 2)
                     model_scores[clf_str].append([res_path, accuracy, bal_accuracy, f1, clf.best_params_])
                     res_str = ' => accuracy = ' + str(accuracy) + '%, F1 = ' + str(f1)
                     logger.info(model_str + res_str)
