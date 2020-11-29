@@ -13,14 +13,11 @@ def read_yml(yml_name):
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "command", metavar="<command>"
-    )
-    parser.add_argument(
         "--yml_path",
         required=True
     )
     args = parser.parse_args()
-    return args.command, args.yml_path
+    return args.yml_path
 
 
 def makedir(path):

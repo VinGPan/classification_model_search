@@ -1,6 +1,7 @@
 import os
 import os.path
 import pickle
+from shutil import copyfile
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import Isomap
 from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import GaussianNB
@@ -26,6 +27,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.svm import SVC
 from sklearn.utils.testing import ignore_warnings
 
+from src.model.utils import makedir
 from src.utils.logging import logger
 
 
@@ -105,11 +107,27 @@ def add_classifier_step(clf_str, steps, clf_info, param_grid, tot_classes):
             param_grid[0]["clf__" + name] = vals
 
 
+def get_crashed_list(configs):
+    crashed_list_fname = "output/" + configs["experiment_name"] + "/" + "crashed.txt"
+    if os.path.exists(crashed_list_fname):
+        fid = open(crashed_list_fname, "r")
+        crashed_list = []
+        for line in fid:
+            crashed_list.append(line.strip())
+        fid.close()
+    else:
+        crashed_list = []
+        fid = open(crashed_list_fname, "w")
+        fid.close()
+    return crashed_list, crashed_list_fname
+
+
 @ignore_warnings(category=ConvergenceWarning)
 def build_models(configs):
     data_path = "output/" + configs['experiment_name'] + "/features.csv"
     train_path = "output/" + configs['experiment_name'] + "/train.csv"
     val_path = train_path.replace("train.csv", "val.csv")
+    makedir("output/" + configs['experiment_name'] + "/interim")
 
     logger.info('Building Models for ' + str(train_path))
 
@@ -126,13 +144,12 @@ def build_models(configs):
 
     all_scores_path = "output/" + configs["experiment_name"] + "/all_scores.pkl"
     all_scores_done_flg = "output/" + configs["experiment_name"] + "/all_scores_flg"
+    crashed_list, crashed_list_fname = get_crashed_list(configs)
     if os.path.exists(all_scores_path) and os.path.exists(all_scores_done_flg):
         # If allready model building is done just return the results.
         # This is heplful to display result in a jupyter notebook.
-        logger.info('All the models have been built already. Loading results from ' + str(all_scores_path))
-        all_scores = pickle.load(open(all_scores_path, "rb"))
+        logger.info('All the models have been built already.')
     else:
-        model_scores = {}
         all_scores = []
         tot_classes = np.unique(y).shape[0]
 
@@ -143,8 +160,8 @@ def build_models(configs):
                 for transforms_info in configs["models"]["transforms"]:
                     transforms_str = transforms_info['name']
                     clf_str = clf_info['name']
-                    res_path = "output/" + configs["experiment_name"] + "/" + clf_str + "_" + preproc_str + "_" + \
-                               transforms_str + ".pkl"
+                    res_path = "output/" + configs["experiment_name"] + "/interim/" + clf_str + "_" + preproc_str + \
+                               "_" + transforms_str + ".pkl"
                     model_str = 'classifier "' + clf_str + '" with preprocessing "' + preproc_str + \
                                 '" and with transform "' + transforms_str + '"'
                     logger.info('Building ' + model_str)
@@ -177,19 +194,23 @@ def build_models(configs):
                     if os.path.exists(res_path):
                         logger.info('Model has been built already. Loading the model ' + str(res_path))
                         clf = joblib.load(res_path)
+                    elif model_str in crashed_list:
+                        logger.info('Model fails to build. Ignoring. Please consider modifying the params.')
+                        continue
                     else:
                         try:
                             clf.fit(X, y)
                         except Exception as e:
                             logger.info("Model building crashed for " + model_str)
                             logger.error(e, exc_info=True)
+                            fid = open(crashed_list_fname, "a")
+                            fid.write(model_str + "\n")
+                            fid.close()
                             continue
                         joblib.dump(clf, res_path)
                     ###################################################################
 
                     ################### Record scores ################
-                    if clf_str not in model_scores:
-                        model_scores[clf_str] = []
                     cv_results = clf.cv_results_
                     for scorer in scoring:
                         best_index = np.nonzero(cv_results['rank_test_%s' % scorer] == 1)[0][0]
@@ -200,37 +221,23 @@ def build_models(configs):
                             accuracy = np.round(best_score * 100, 1)
                         else:
                             f1 = np.round(best_score, 2)
-                    model_scores[clf_str].append([res_path, accuracy, bal_accuracy, f1, clf.best_params_])
                     res_str = ' => accuracy = ' + str(accuracy) + '%, F1 = ' + str(f1)
                     logger.info(model_str + res_str)
-                    all_scores.append([clf_str, preproc_str, transforms_str, accuracy, bal_accuracy, f1])
+                    score_info = {'classifier': clf_str, 'preprocess': preproc_str, 'transform': transforms_str,
+                                  'accuracy': accuracy, 'balanced_accuracy': bal_accuracy, 'f1_score': f1,
+                                  'res_path': res_path
+                                  }
+                    all_scores.append(score_info)
                     pickle.dump(all_scores, open(all_scores_path, "wb"))
                     ###################################################################
                 # end each transforms
             # end each preprocs
         # end each classifiers
+        all_scores = sorted(all_scores, key=lambda x: x['balanced_accuracy'], reverse=True)
+
+        best_model_path = "output/" + configs["experiment_name"] + "/best_model.pkl"
+        copyfile(all_scores[0]['res_path'], best_model_path)
+
         fid = open(all_scores_done_flg, "wb")
         fid.close()
         logger.info("All the models are built.")
-
-    # Find top three models
-    logger.info("Top 3 classifiers:")
-    all_scores = sorted(all_scores, key=lambda x: x[4], reverse=True)
-    prev_cls = None
-    cls_count = 0
-    top_scores = []
-    for score in all_scores:
-        if prev_cls == score[0]:
-            continue
-        res_str = 'classifier = ' + score[0] + ", preproc = " + score[1] + ", transform = " + score[2]
-        res_str += (' => accuracy = ' + str(score[3]) + '%, F1 = ' + str(score[4]))
-        logger.info(res_str)
-        prev_cls = score[0]
-        cls_count += 1
-        top_scores.append(score)
-        if cls_count == 3:
-            break
-    col_names = ['classifier', 'preprocess', 'transform', 'accuracy', 'balanced_accuracy', 'f1_score']
-    df = pd.DataFrame(np.array(top_scores), columns=col_names)
-    all_scores = pd.DataFrame(np.array(all_scores), columns=col_names)
-    return all_scores, df
