@@ -14,10 +14,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.externals import joblib
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.manifold import Isomap
 from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.metrics import accuracy_score, balanced_accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, r2_score, mean_absolute_error, mean_squared_error
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import GaussianNB
@@ -81,6 +81,7 @@ def add_transform_step(transforms_str, steps, transforms_info, param_grid):
 
 
 def add_classifier_step(clf_str, steps, clf_info, param_grid, tot_classes):
+    ###########  classifiers  ################
     if clf_str == 'logistic':
         steps.append(('clf', LogisticRegression(multi_class='auto', random_state=0, solver='liblinear')))
     elif clf_str == 'naive_bayes':
@@ -97,6 +98,12 @@ def add_classifier_step(clf_str, steps, clf_info, param_grid, tot_classes):
         steps.append(('clf', AdaBoostClassifier(random_state=42)))
     elif clf_str == 'gradboost':
         steps.append(('clf', GradientBoostingClassifier(random_state=42)))
+    #########################################
+    elif clf_str == 'linear':
+        steps.append(('clf', LinearRegression()))
+    else:
+        logger.error("Classifier option " + clf_str + " not supported")
+        raise Exception("Classifier option " + clf_str + " not supported")
     if 'params' in clf_info:
         for clf_param in clf_info['params']:
             vals = clf_param['vals']
@@ -124,6 +131,7 @@ def get_crashed_list(configs):
 
 @ignore_warnings(category=ConvergenceWarning)
 def build_models(configs):
+    mtype = configs['mtype']
     data_path = "output/" + configs['experiment_name'] + "/features.csv"
     train_path = "output/" + configs['experiment_name'] + "/train.csv"
     val_path = train_path.replace("train.csv", "val.csv")
@@ -151,7 +159,10 @@ def build_models(configs):
         logger.info('All the models have been built already.')
     else:
         all_scores = []
-        tot_classes = np.unique(y).shape[0]
+        if mtype == 'classification':
+            tot_classes = np.unique(y).shape[0]
+        else:
+            tot_classes = None
 
         # For Each classifier - For Each Data transform - For each Dimensionality reduction BUILD THE MODEL!
 
@@ -185,12 +196,18 @@ def build_models(configs):
 
                     ##################### Perform grid search #####################
                     pipeline = Pipeline(steps=steps)
-                    scoring = {'balanced_accuracy': make_scorer(balanced_accuracy_score),
-                               'accuracy': make_scorer(accuracy_score),
-                               'f1': 'f1_micro'}
+                    if mtype == 'classification':
+                        scoring = {'balanced_accuracy': make_scorer(balanced_accuracy_score),
+                                   'accuracy': make_scorer(accuracy_score),
+                                   'f1': 'f1_micro'}
+                        refit = 'balanced_accuracy'
+                    else:
+                        scoring = {'r2': make_scorer(r2_score), 'mae': make_scorer(mean_absolute_error),
+                                   'mse': make_scorer(mean_squared_error)}
+                        refit = 'r2'
 
                     clf = GridSearchCV(estimator=pipeline, cv=5, param_grid=param_grid,
-                                       verbose=1, scoring=scoring, refit='balanced_accuracy')
+                                       verbose=1, scoring=scoring, refit=refit)
                     if os.path.exists(res_path):
                         logger.info('Model has been built already. Loading the model ' + str(res_path))
                         clf = joblib.load(res_path)
@@ -212,28 +229,40 @@ def build_models(configs):
 
                     ################### Record scores ################
                     cv_results = clf.cv_results_
+                    score_info = {'classifier': clf_str, 'preprocess': preproc_str, 'transform': transforms_str,
+                                  'res_path': res_path}
                     for scorer in scoring:
                         best_index = np.nonzero(cv_results['rank_test_%s' % scorer] == 1)[0][0]
                         best_score = cv_results['mean_test_%s' % scorer][best_index]
                         if scorer == 'balanced_accuracy':
-                            bal_accuracy = np.round(best_score * 100, 1)
+                            score_info['balanced_accuracy'] = np.round(best_score * 100, 1)
                         elif scorer == 'accuracy':
-                            accuracy = np.round(best_score * 100, 1)
-                        else:
-                            f1 = np.round(best_score, 2)
-                    res_str = ' => accuracy = ' + str(accuracy) + '%, F1 = ' + str(f1)
+                            score_info['accuracy'] = np.round(best_score * 100, 1)
+                        elif scorer == 'f1':
+                            score_info['f1_score'] = np.round(best_score, 2)
+                        elif scorer == 'r2':
+                            score_info['r2'] = np.round(best_score, 2)
+                        elif scorer == 'mae':
+                            score_info['mae'] = np.round(best_score, 2)
+                        elif scorer == 'mse':
+                            score_info['mse'] = np.round(best_score, 2)
+                    if mtype == 'classification':
+                        res_str = ' => accuracy = ' + str(score_info['accuracy']) + '%, F1 = ' + \
+                                  str(score_info['f1_score'])
+                    else:
+                        res_str = ' => r2 = ' + str(score_info['r2'])
                     logger.info(model_str + res_str)
-                    score_info = {'classifier': clf_str, 'preprocess': preproc_str, 'transform': transforms_str,
-                                  'accuracy': accuracy, 'balanced_accuracy': bal_accuracy, 'f1_score': f1,
-                                  'res_path': res_path
-                                  }
+
                     all_scores.append(score_info)
                     pickle.dump(all_scores, open(all_scores_path, "wb"))
                     ###################################################################
                 # end each transforms
             # end each preprocs
         # end each classifiers
-        all_scores = sorted(all_scores, key=lambda x: x['balanced_accuracy'], reverse=True)
+        if mtype == 'classification':
+            all_scores = sorted(all_scores, key=lambda x: x['balanced_accuracy'], reverse=True)
+        else:
+            all_scores = sorted(all_scores, key=lambda x: x['r2'], reverse=True)
 
         best_model_path = "output/" + configs["experiment_name"] + "/best_model.pkl"
         copyfile(all_scores[0]['res_path'], best_model_path)

@@ -4,6 +4,7 @@ cleanse: 'none'
 features: 'none'
 split: 'random'
 target: 'quality'
+mtype: 'classification'
 models:
   preprocs: ['none', 'min_max', 'standard_scalar']
   transforms:

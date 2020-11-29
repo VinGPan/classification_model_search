@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.externals import joblib
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, classification_report
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from sklearn.metrics import confusion_matrix
 
 from src.utils.logging import logger
@@ -60,8 +61,11 @@ def plot_confusion_matrix(y_true, y_pred, classes, configs):
     fig.savefig(res)
 
 
-def prepare_scores_df(scores):
-    col_names = ['classifier', 'preprocess', 'transform', 'accuracy', 'balanced_accuracy', 'f1_score']
+def prepare_scores_df(scores, mtype):
+    if mtype == 'classification':
+        col_names = ['classifier', 'preprocess', 'transform', 'accuracy', 'balanced_accuracy', 'f1_score']
+    else:
+        col_names = ['classifier', 'preprocess', 'transform', 'r2', 'mae', 'mse']
     all_scores = []
     for info in scores:
         all_scores.append([info[v] for v in col_names])
@@ -70,12 +74,16 @@ def prepare_scores_df(scores):
 
 
 def report_training_results(configs):
+    mtype = configs['mtype']
     all_scores_path = "output/" + configs["experiment_name"] + "/all_scores.pkl"
     logger.info('Running Train Reports. Loading training results from ' + str(all_scores_path))
     all_scores = pickle.load(open(all_scores_path, "rb"))
 
-    logger.info("Top 3 classifiers:")
-    all_scores = sorted(all_scores, key=lambda x: x['balanced_accuracy'], reverse=True)
+    logger.info("Top 3 models:")
+    if mtype == 'classification':
+        all_scores = sorted(all_scores, key=lambda x: x['balanced_accuracy'], reverse=True)
+    else:
+        all_scores = sorted(all_scores, key=lambda x: x['r2'], reverse=True)
     prev_cls = None
     cls_count = 0
     top_scores = []
@@ -84,7 +92,10 @@ def report_training_results(configs):
             continue
         res_str = 'classifier = ' + score['classifier'] + ", preproc = " + \
                   score['preprocess'] + ", transform = " + score['transform']
-        res_str += (' => accuracy = ' + str(score['accuracy']) + '%, F1 = ' + str(score['f1_score']))
+        if mtype == 'classification':
+            res_str += (' => accuracy = ' + str(score['accuracy']) + '%, F1 = ' + str(score['f1_score']))
+        else:
+            res_str += (' => r2 = ' + str(score['r2']))
         logger.info(res_str)
         prev_cls = score['classifier']
         cls_count += 1
@@ -92,15 +103,15 @@ def report_training_results(configs):
         if cls_count == 3:
             break
 
-    df = prepare_scores_df(top_scores)
-    all_scores = prepare_scores_df(all_scores)
+    df = prepare_scores_df(top_scores, mtype)
+    all_scores = prepare_scores_df(all_scores, mtype)
     res = "output/" + configs["experiment_name"] + "/report/cv_top_scores.csv"
     df.to_csv(res, index=False)
     res = "output/" + configs["experiment_name"] + "/report/cv_sorted_scores.csv"
     all_scores.to_csv(res, index=False)
 
 
-def report_test_results(configs):
+def report_test_results_classification(configs):
     logger.info('Running Test Reports')
     ############## Make prediction on test ##############
     X, y = prepare_test_data(configs)
@@ -148,6 +159,30 @@ def report_test_results(configs):
     ####################################################
 
 
+def report_test_results_regression(configs):
+    logger.info('Running Test Reports')
+    ############## Make prediction on test ##############
+    X, y = prepare_test_data(configs)
+    logger.info('Predicting on test set')
+    best_model_path = "output/" + configs["experiment_name"] + "/best_model.pkl"
+    clf = joblib.load(best_model_path)
+    pred_y = clf.predict(X)
+    ####################################################
+
+    ############## Compute scores #######################
+    col_names = ['r2', 'mae', 'mse']
+    r2 = np.round(r2_score(y, pred_y) * 100, 2)
+    mse = np.round(mean_squared_error(y, pred_y) * 100, 2)
+    mae = np.round(mean_absolute_error(y, pred_y), 2)
+    res_str = 'On test set => r2 = ' + str(r2)
+    all_scores = [[r2, mse, mae]]
+    scores = pd.DataFrame(np.array(all_scores), columns=col_names)
+    logger.info(res_str)
+    res = "output/" + configs["experiment_name"] + "/report/test_accuracy_scores.csv"
+    scores.to_csv(res, index=False)
+    ####################################################
+
+
 def prepare_test_data(configs):
     logger.info('Reading Test Data')
     test_path = "output/" + configs['experiment_name'] + "/test.csv"
@@ -171,4 +206,8 @@ def report(configs):
     except:
         pass
     report_training_results(configs)
-    report_test_results(configs)
+    mtype = configs['mtype']
+    if mtype == 'classification':
+        report_test_results_classification(configs)
+    else:
+        report_test_results_regression(configs)

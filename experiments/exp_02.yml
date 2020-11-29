@@ -4,6 +4,7 @@ cleanse: 'src.project.glass.data_cleaning'
 features: 'none'
 split: 'random'
 target: 'type'
+mtype: 'classification'
 models:
   preprocs: ['none', 'min_max', 'standard_scalar']
   transforms:

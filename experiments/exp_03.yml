@@ -1,0 +1,27 @@
+experiment_name: 'exp3'
+data_path: 'data/winequality_red.csv'
+cleanse: 'none'
+features: 'none'
+split: 'random'
+target: 'quality'
+mtype: 'regression'
+models:
+  preprocs: ['none', 'min_max', 'standard_scalar']
+  transforms:
+    - name: 'none'
+    - name: 'pca'
+      params:
+        - name: 'n_components'
+          vals: [3, 5, 10]
+    - name: 'kpca'
+      params:
+        - name: 'n_components'
+          vals: [3, 4, 5]
+    - name: 'lle'
+      params:
+        - name: 'n_components'
+          vals: [3, 4, 5]
+        - name: 'n_neighbors'
+          vals: [3, 5, 7]
+  classifiers:
+    - name: 'linear'
